@@ -19,9 +19,9 @@ public class LnProxyController : ControllerBase
     }
 
     [HttpGet(Name = "GetHodlInvoice")]
-    public IEnumerable<WeatherForecast> Get()
+    public IEnumerable<LnInvoice> Get()
     {
-        return Enumerable.Range(1, 5).Select(index => new WeatherForecast
+        return Enumerable.Range(1, 5).Select(index => new LnInvoice
         {
             Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
             TemperatureC = Random.Shared.Next(-20, 55),

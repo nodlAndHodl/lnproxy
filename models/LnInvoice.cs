@@ -1,6 +1,6 @@
 namespace LnProxyApi;
 
-public class WeatherForecast
+public class LnInvoice
 {
     public DateOnly Date { get; set; }
 
