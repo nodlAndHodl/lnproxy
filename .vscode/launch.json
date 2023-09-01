@@ -13,10 +13,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "stopAtEntry": false,
-            "serverReadyAction": {
-                "action": "openExternally",
-                "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
-            },
+            "requireExactSource": false,
             "env": {
                 "ASPNETCORE_ENVIRONMENT": "Development"
             },
