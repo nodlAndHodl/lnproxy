@@ -1,3 +1,7 @@
+using Invoicesrpc;
+using LndGrpc;
+using LnProxyApi.Models;
+using Lnrpc;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LnProxyApi.Controllers;
@@ -6,27 +10,40 @@ namespace LnProxyApi.Controllers;
 [Route("[controller]")]
 public class LnProxyController : ControllerBase
 {
-    private static readonly string[] Summaries = new[]
-    {
-        "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-    };
-
+    private readonly IConfiguration _configuration;
     private readonly ILogger<LnProxyController> _logger;
 
-    public LnProxyController(ILogger<LnProxyController> logger)
+    public LnProxyController(IConfiguration configuration, ILogger<LnProxyController> logger)
     {
+        _configuration = configuration;
         _logger = logger;
     }
 
-    [HttpGet(Name = "GetHodlInvoice")]
-    public IEnumerable<LnInvoice> Get()
+    [HttpPost("create-hodl-invoice")]
+    public IActionResult Post([FromBody] LnProxyModel request)
     {
-        return Enumerable.Range(1, 5).Select(index => new LnInvoice
+        try
         {
-            Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            TemperatureC = Random.Shared.Next(-20, 55),
-            Summary = Summaries[Random.Shared.Next(Summaries.Length)]
-        })
-        .ToArray();
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var lightningService = new LightningService(_configuration, _logger);
+            _logger.LogInformation($"Creating proxy request invoice {request.Invoice}");
+
+            AddHoldInvoiceResp response = lightningService.CreateHodlInvoice(
+                request.Invoice,
+                request.Description,
+                request.DescriptionHash
+            );
+
+            return Ok(new { ProxyInvoice = response.PaymentRequest });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Status = "ERROR", Reason = ex.Message });
+        }
     }
+
 }
