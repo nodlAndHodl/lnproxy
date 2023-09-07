@@ -19,7 +19,7 @@ public class LnProxyController : ControllerBase
         _logger = logger;
     }
 
-    [HttpPost("create-hodl-invoice")]
+    [HttpPost("spec")]
     public IActionResult Post([FromBody] LnProxyModel request)
     {
         try

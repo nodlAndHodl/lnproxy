@@ -134,7 +134,10 @@ namespace LndGrpc
             try
             {
                 var payReqFromInvoice = DecodePayRequest(payRequestString);
-                //TODO check for if AMP invoice and Routing Sats
+				if(payReqFromInvoice.Features.ContainsKey(30)){
+                    throw new Exception("Cannot wrap AMP invoice");
+                }
+
                 var invoiceClient = lnGrpcService.GetInvoiceClient();
                 var hodlInvoice = new AddHoldInvoiceRequest()
                 {
@@ -151,10 +154,9 @@ namespace LndGrpc
                 _ = SubscribeToHodlInvoice(hodlInvoice.Hash, payReqFromInvoice, payRequestString);
                 return invoiceResponse;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-				_logger.LogError("An exception occurred creating hodl invoice", new {message = ex.Message});
-                throw ex;
+                throw;
             }
         }
     }
