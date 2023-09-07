@@ -123,9 +123,7 @@ namespace LndGrpc
                 catch (Exception ex)
                 {
                     _logger.LogError("An exception occurred settling invoice", ex.Message);
-                    throw ex;
                 }
-
             }
         }
 
@@ -134,7 +132,8 @@ namespace LndGrpc
             try
             {
                 var payReqFromInvoice = DecodePayRequest(payRequestString);
-				if(payReqFromInvoice.Features.ContainsKey(30)){
+				
+                if(payReqFromInvoice.Features.ContainsKey(30)){
                     throw new Exception("Cannot wrap AMP invoice");
                 }
 
