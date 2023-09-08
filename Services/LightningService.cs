@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Google.Protobuf;
 using Grpc.Core;
 using Invoicesrpc;
@@ -52,8 +53,9 @@ namespace LndGrpc
                 return invoiceResponse;
             }
             catch (Exception ex)
-            {
-                throw new Exception("Error decoding invoice", ex);
+            {   
+                _logger.LogError(ex, "Error decoding invoice");
+                throw;
             }
         }
 
@@ -79,7 +81,7 @@ namespace LndGrpc
 							PaymentHash = HexStringToByteString(originalInvoice.PaymentHash)
 						};
 						var canceledRes = invoiceClient.CancelInvoice(cancel);
-                        _logger.LogWarning("Canceled invoice", canceledRes.ToString());
+                        _logger.LogWarning("Canceled invoice", JsonSerializer.Serialize(canceledRes));
                     }
 
                     if (payment.Status == Payment.Types.PaymentStatus.Succeeded)
@@ -90,12 +92,12 @@ namespace LndGrpc
                             Preimage = HexStringToByteString(payment.PaymentPreimage)
                         };
                         var settled = invoiceClient.SettleInvoice(s);
-						_logger.LogInformation("Settled Invoice", settled.ToString());
+						_logger.LogInformation("Settled Invoice From payment", JsonSerializer.Serialize(settled), JsonSerializer.Serialize(payment));
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("An exception occurred settling the invoice:", ex.Message);
+                    _logger.LogError(ex, "An exception occurred settling the invoice.");
                 }
             }
         }
@@ -122,7 +124,7 @@ namespace LndGrpc
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError("An exception occurred settling invoice", ex.Message);
+                    _logger.LogError(ex, "An exception occurred settling invoice");
                 }
             }
         }
