@@ -1,8 +1,8 @@
 # LnProxy
-Basic dotnet web api following the specs identified at the https://github.com/lnproxy/lnproxy-relay and https://github.com/lnproxy/spec. 
+Basic dotnet web api following the specs from https://github.com/lnproxy/spec and the OG implementation at https://github.com/lnproxy/lnproxy-relay . 
 
 ### Impetus
-From a development perspective I wanted learn more about Hodl Invoices. I saw a demo on the use of ln proxy relays for privacy by Open Noms while I was in the Adopting Bitcoin conference in El Salvador 2022. The idea of a proxy relay was intriguing and took me a while :) to create an implementation of my own.
+From a development perspective I wanted learn more about Hodl Invoices. I saw a demo on the use of ln proxy relays for privacy by OpenNoms while I was at the Adopting Bitcoin conference in El Salvador 2022. The idea of a proxy relay was intriguing and took led me to want create an implementation of my own.
 
 ### Running the APP
 No Dockerfile yet, but if you have an install of dotnet 7 run `dotnet build` and `dotnet run`. This will bring up the app with swagger UI at https://localhost:7290/swagger/index.html, or you could do some curl using the following example. 
