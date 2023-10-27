@@ -35,7 +35,8 @@ public class LnProxyController : ControllerBase
             AddHoldInvoiceResp response = lightningService.CreateHodlInvoice(
                 request.Invoice,
                 request.Description,
-                request.DescriptionHash
+                request.DescriptionHash,
+                request.RoutingMsat
             );
 
             return Ok(new { ProxyInvoice = response.PaymentRequest });

@@ -4,11 +4,16 @@ using Grpc.Core;
 using Invoicesrpc;
 using Lnrpc;
 using Routerrpc;
+using LnProxyApi.Helpers;
 
 namespace LndGrpc
 {
     public class LightningService
     {
+        const int RoutingFeeBaseMsat = 1000; 
+        const int RoutingFeePPM = 1000;
+	    const int MinFeeBudgetMsat = 1000;
+
         private readonly Dictionary<Invoice.Types.InvoiceState, string> invoiceState = 
 			new Dictionary<Invoice.Types.InvoiceState, string>
         {
@@ -26,18 +31,6 @@ namespace LndGrpc
             lnGrpcService = new LnGrpcClientService(configuration);
         }
 
-        private ByteString HexStringToByteString(string hexString)
-        {
-            int length = hexString.Length;
-            byte[] bytes = new byte[length / 2];
-
-            for (int i = 0; i < length; i += 2)
-            {
-                bytes[i / 2] = Convert.ToByte(hexString.Substring(i, 2), 16);
-            }
-
-            return ByteString.CopyFrom(bytes);
-        }
 
         public PayReq DecodePayRequest(string invoice)
         {
@@ -78,7 +71,7 @@ namespace LndGrpc
                     {  
 						var cancel = new CancelInvoiceMsg()
 						{
-							PaymentHash = HexStringToByteString(originalInvoice.PaymentHash)
+							PaymentHash = HexStringHelper.HexStringToByteString(originalInvoice.PaymentHash)
 						};
 						var canceledRes = invoiceClient.CancelInvoice(cancel);
                         _logger.LogWarning("Canceled invoice", JsonSerializer.Serialize(canceledRes));
@@ -86,13 +79,12 @@ namespace LndGrpc
 
                     if (payment.Status == Payment.Types.PaymentStatus.Succeeded)
                     {
-                        
                         var s = new SettleInvoiceMsg
                         {
-                            Preimage = HexStringToByteString(payment.PaymentPreimage)
+                            Preimage = HexStringHelper.HexStringToByteString(payment.PaymentPreimage)
                         };
                         var settled = invoiceClient.SettleInvoice(s);
-						_logger.LogInformation("Settled Invoice From payment", JsonSerializer.Serialize(settled), JsonSerializer.Serialize(payment));
+                        _logger.LogInformation("Settled Invoice From payment {0}", JsonSerializer.Serialize(settled));
                     }
                 }
                 catch (Exception ex)
@@ -129,7 +121,25 @@ namespace LndGrpc
             }
         }
 
-        public AddHoldInvoiceResp CreateHodlInvoice(string payRequestString, string? payReqDescription, string? payReqHash)
+        private (int, Exception?) GetCustomMinFee(string? payReqRoutingMsat, PayReq payReqFromInvoice)
+        {
+            if (!string.IsNullOrWhiteSpace(payReqRoutingMsat))
+            {
+                var routing_fee_msat = RoutingFeeBaseMsat + payReqFromInvoice.NumMsat * RoutingFeePPM / 1_000_000;
+
+                if (int.TryParse(payReqRoutingMsat, out int routingMsat) && routingMsat < (MinFeeBudgetMsat + routing_fee_msat))
+                {
+                    return (0, new Exception("custom fee budget too low"));
+                }
+                return ((int)(routingMsat - routing_fee_msat), null);
+            }
+            else
+            {
+                return (0, null);
+            }
+        }
+
+        public AddHoldInvoiceResp CreateHodlInvoice(string payRequestString, string? payReqDescription, string? payReqHash, string? payReqRoutingMsat)
         {
             try
             {
@@ -142,13 +152,15 @@ namespace LndGrpc
                 var invoiceClient = lnGrpcService.GetInvoiceClient();
                 var hodlInvoice = new AddHoldInvoiceRequest()
                 {
-                    Memo = !string.IsNullOrEmpty(payReqDescription) ?
+                    Memo = !string.IsNullOrWhiteSpace(payReqDescription) ?
                         payReqDescription : payReqFromInvoice.Description,
-                    DescriptionHash = !string.IsNullOrEmpty(payReqHash) ?
-                        HexStringToByteString(payReqHash) : HexStringToByteString(payReqFromInvoice.DescriptionHash),
-                    Hash = HexStringToByteString(payReqFromInvoice.PaymentHash),
+                    DescriptionHash = !string.IsNullOrWhiteSpace(payReqHash) ?
+                        HexStringHelper.HexStringToByteString(payReqHash) : HexStringHelper.HexStringToByteString(payReqFromInvoice.DescriptionHash),
+                    Hash = HexStringHelper.HexStringToByteString(payReqFromInvoice.PaymentHash),
                     ValueMsat = payReqFromInvoice.NumMsat,
-                    CltvExpiry = (ulong)payReqFromInvoice.CltvExpiry + 10,
+                    //An lnproxy relay needs to ensure that payments to the original invoice 
+                    CltvExpiry = (ulong)payReqFromInvoice.CltvExpiry - 10, 
+                    // RoutingFeeMsat
                 };
 
                 var invoiceResponse = invoiceClient.AddHoldInvoice(hodlInvoice);
