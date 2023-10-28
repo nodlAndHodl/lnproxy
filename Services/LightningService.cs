@@ -149,6 +149,16 @@ namespace LndGrpc
                     throw new Exception("Cannot wrap AMP invoice");
                 }
 
+                if (!string.IsNullOrWhiteSpace(payReqDescription) && !string.IsNullOrWhiteSpace(payReqHash))
+                {
+                    throw new Exception("Cannot set both Description and DescriptionHash");
+                }
+                var (customMinFee, customMinFeeError) = GetCustomMinFee(payReqRoutingMsat, payReqFromInvoice);
+                if (customMinFeeError != null)
+                {
+                    throw customMinFeeError;
+                }
+
                 var invoiceClient = lnGrpcService.GetInvoiceClient();
                 var hodlInvoice = new AddHoldInvoiceRequest()
                 {
@@ -158,9 +168,7 @@ namespace LndGrpc
                         HexStringHelper.HexStringToByteString(payReqHash) : HexStringHelper.HexStringToByteString(payReqFromInvoice.DescriptionHash),
                     Hash = HexStringHelper.HexStringToByteString(payReqFromInvoice.PaymentHash),
                     ValueMsat = payReqFromInvoice.NumMsat,
-                    //An lnproxy relay needs to ensure that payments to the original invoice 
-                    CltvExpiry = (ulong)payReqFromInvoice.CltvExpiry - 10, 
-                    // RoutingFeeMsat
+                    CltvExpiry = (ulong)payReqFromInvoice.CltvExpiry - 10, // 10 blocks less than the original invoice
                 };
 
                 var invoiceResponse = invoiceClient.AddHoldInvoice(hodlInvoice);
