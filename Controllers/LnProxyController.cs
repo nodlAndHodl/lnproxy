@@ -35,13 +35,21 @@ public class LnProxyController : ControllerBase
             AddHoldInvoiceResp response = lightningService.CreateHodlInvoice(
                 request.Invoice,
                 request.Description,
-                request.DescriptionHash
+                request.DescriptionHash,
+                request.RoutingMsat
             );
 
             return Ok(new { ProxyInvoice = response.PaymentRequest });
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Error creating proxy request invoice.");
+
+            if (ex.Message.Contains("StatusCode=", StringComparison.InvariantCultureIgnoreCase))
+            {
+                var detail = ex.Message.Split("Detail=")[1];
+                return StatusCode(500, new { Status = "ERROR", Reason = detail.Replace("\\", "").Replace(")", "").Replace("\"", "").Trim() });
+            }
             return StatusCode(500, new { Status = "ERROR", Reason = ex.Message });
         }
     }
