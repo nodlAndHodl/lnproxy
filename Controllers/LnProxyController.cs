@@ -30,7 +30,7 @@ public class LnProxyController : ControllerBase
             }
 
             var lightningService = new LightningService(_configuration, _logger);
-            _logger.LogInformation($"Creating proxy request invoice {request.Invoice}");
+            _logger.LogInformation($"Creating proxy request invoice {request.Invoice}: {@request}");
 
             AddHoldInvoiceResp response = lightningService.CreateHodlInvoice(
                 request.Invoice,
