@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Google.Protobuf;
 using Grpc.Core;
 using Invoicesrpc;
@@ -6,19 +5,20 @@ using Lnrpc;
 using Routerrpc;
 using LnProxyApi.Helpers;
 
-namespace LndGrpc
-{
-    public class LightningService
-    {
-        const int RoutingFeeBaseMsat = 1000; 
-        const int RoutingFeePPM = 1000;
-	    const int MinFeeBudgetMsat = 1000;
-        const int ExpiryBuffer = 300;
-        const int CltvDeltaAlpha = 42;
-        const int CltvDeltaBeta = 42;
-		const int MaxCltvExpiry = 1800;
-		const int MinCltvExpiry =  200;
+namespace LnProxyApi.LndGrpc.Services;
 
+public class LightningService
+    {
+        const long RoutingFeeBaseMsat = 1000; 
+        const long RoutingFeePPM = 1000;
+	    const long MinFeeBudgetMsat = 1000;
+        const long ExpiryBuffer = 300;
+        const long CltvDeltaAlpha = 42;
+        const long CltvDeltaBeta = 42;
+		const long MaxCltvExpiry = 1800;
+		const long MinCltvExpiry =  200;
+        const long RoutingBudgetAlpha = 1000;
+        const long RoutingBudgetBeta = 1_500_000;
 
         private readonly Dictionary<Invoice.Types.InvoiceState, string> invoiceState = 
 			new Dictionary<Invoice.Types.InvoiceState, string>
@@ -58,14 +58,18 @@ namespace LndGrpc
             }
         }
 
-        private async Task SettleAndPayInvoice(PayReq originalInvoice, string request)
+        private async Task SettleAndPayInvoice(PayReq originalInvoice, string request, long feeLimitMsat)
         {
             var routerClient = lnGrpcService.GetRouterClient();
+            var estimateFee = EstimateRouteFee(originalInvoice).Result;
             var req = new SendPaymentRequest()
             {
                 PaymentRequest = request,
+                FeeLimitMsat = feeLimitMsat,
+                CltvLimit = (int)CalcCltvExpiry(estimateFee),
                 TimeoutSeconds = 600
             };
+
 
             var call = routerClient.SendPaymentV2(req);
             await foreach (var payment in call.ResponseStream.ReadAllAsync())
@@ -88,7 +92,7 @@ namespace LndGrpc
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Failed to cancel invoice");
+                            _logger.LogError(ex, $"Failed to cancel invoice: {@originalInvoice}");
                         }
 
                     }
@@ -111,7 +115,7 @@ namespace LndGrpc
             }
         }
 
-        public async Task SubscribeToHodlInvoice(ByteString rHash, PayReq originalInvoice, string originalRequest)
+        public async Task SubscribeToHodlInvoice(ByteString rHash, PayReq originalInvoice, string originalRequest, long feeLimitMsat)
         {
             var invoiceClient = lnGrpcService.GetInvoiceClient();
 
@@ -123,9 +127,8 @@ namespace LndGrpc
                 {
                     if (invoice.State == Invoice.Types.InvoiceState.Accepted)
                     {
-                        //I want to log the invoice here
                         _logger.LogInformation($"Invoice was ACCEPTED : {@invoice}");
-                        await SettleAndPayInvoice(originalInvoice, originalRequest);
+                        await SettleAndPayInvoice(originalInvoice, originalRequest, feeLimitMsat);
                     }
                     else if (invoiceState.TryGetValue(invoice.State, out string? stateString))
                     {
@@ -134,7 +137,7 @@ namespace LndGrpc
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "An exception occurred settling invoice");
+                    _logger.LogError(ex, $"An exception occurred settling invoice: {@invoice}");
                 }
             }
         }
@@ -160,7 +163,6 @@ namespace LndGrpc
             try
             {
                 var client = lnGrpcService.GetRouterClient();
-
                 var route = new RouteFeeRequest()
                 {   
                     AmtSat = payReqFromInvoice.NumSatoshis,
@@ -168,12 +170,11 @@ namespace LndGrpc
                 };
 
                 var estimateFee = await client.EstimateRouteFeeAsync(route);
-
+                _logger.LogInformation($"Estimate of routing fees: {estimateFee}");
                 if(estimateFee == null){
                     throw new Exception("Error getting route fee from payment request");
                 }
                 return estimateFee;
-
             }
             catch (Exception ex)
             {   
@@ -182,33 +183,18 @@ namespace LndGrpc
             }
         }
 
-        private static int GetCustomMinFee(string? payReqRoutingMsat, PayReq payReqFromInvoice)
-        {
-            if (!string.IsNullOrWhiteSpace(payReqRoutingMsat))
-            {
-                var routing_fee_msat = RoutingFeeBaseMsat + payReqFromInvoice.NumMsat * RoutingFeePPM / 1_000_000;
-
-                if (int.TryParse(payReqRoutingMsat, out int routingMsat) && routingMsat < (MinFeeBudgetMsat + routing_fee_msat))
-                {
-                    throw new Exception("custom fee budget too low");
-                }
-
-                return (int)(routingMsat - routing_fee_msat);
-            }
-            return MinFeeBudgetMsat;
-        }
-
-        private static long CalcCltvExpiry(RouteFeeResponse estimateFee){
+        private int CalcCltvExpiry(RouteFeeResponse estimateFee){
             var cltvExpiry = estimateFee.TimeLockDelay + CltvDeltaAlpha + CltvDeltaBeta;
-
+            _logger.LogInformation($"CLTV expiry from estimate of routing fees: {cltvExpiry}");
             if(cltvExpiry > MaxCltvExpiry){
+                _logger.LogError($"CLTV expiry too high from estimate of routing fees: {cltvExpiry}");
                 throw new Exception("CLTV expiry too high from estimate of routing fees");
             }
 
             if(cltvExpiry < MinCltvExpiry){
                 cltvExpiry = MinCltvExpiry;
             }
-            return cltvExpiry;
+            return (int)cltvExpiry;
         }
 
         private void ValidateInvoices(PayReq payReqFromInvoice, AddHoldInvoiceRequest hodlInvoice)
@@ -236,11 +222,32 @@ namespace LndGrpc
             {
                 var payReqFromInvoice = DecodePayRequest(payRequestString);
         
-                var customMinFee = GetCustomMinFee(payReqRoutingMsat, payReqFromInvoice);
+                var valueMsat = payReqFromInvoice.NumMsat;
+                var routing_fee_msat = RoutingFeeBaseMsat + payReqFromInvoice.NumMsat * RoutingFeePPM / 1_000_000;
+                var min_fee_budget_msat = EstimateRouteFee(payReqFromInvoice).Result;
+                var cltvExpiry = CalcCltvExpiry(min_fee_budget_msat);
+                var fee_budget_msat = min_fee_budget_msat.RoutingFeeMsat + RoutingBudgetAlpha + (min_fee_budget_msat.RoutingFeeMsat * RoutingBudgetBeta / 1_000_000);
+                
+                if(string.IsNullOrWhiteSpace(payReqRoutingMsat)){
+                    valueMsat = payReqFromInvoice.NumMsat + fee_budget_msat + routing_fee_msat;
+                }
 
-                var estimateFee = EstimateRouteFee(payReqFromInvoice).Result;
-
-                var cltvExpiry = CalcCltvExpiry(estimateFee);
+                if(!string.IsNullOrWhiteSpace(payReqRoutingMsat)){
+                    int.TryParse(payReqRoutingMsat, out int payReqRoutingMsatInt);
+                    try{
+                        _=checked(payReqRoutingMsatInt);
+                    }
+                    catch(OverflowException ex){
+                        _logger.LogError(ex, "Overflow error on routing fee budget");
+                        throw new Exception("Overflow error on routing fee budget");
+                    }
+                    if (payReqRoutingMsatInt < (MinFeeBudgetMsat + routing_fee_msat)){
+                        _logger.LogWarning($"Routing fee budget too low ${payReqRoutingMsatInt}");
+                        _logger.LogWarning($"Routing fee budget too low: ${payRequestString}");
+                        throw new Exception("Routing fee budget too low");
+                    }
+                    valueMsat = payReqFromInvoice.NumMsat - routing_fee_msat + payReqRoutingMsatInt;    
+                }
 
                 var invoiceClient = lnGrpcService.GetInvoiceClient();
                 var hodlInvoice = new AddHoldInvoiceRequest()
@@ -248,9 +255,10 @@ namespace LndGrpc
                     Memo = !string.IsNullOrWhiteSpace(payReqDescription) ?
                         payReqDescription : payReqFromInvoice.Description,
                     DescriptionHash = !string.IsNullOrWhiteSpace(payReqHash) ?
-                        HexStringHelper.HexStringToByteString(payReqHash) : HexStringHelper.HexStringToByteString(payReqFromInvoice.DescriptionHash),
+                        HexStringHelper.HexStringToByteString(payReqHash) :
+                        HexStringHelper.HexStringToByteString(payReqFromInvoice.DescriptionHash),
                     Hash = HexStringHelper.HexStringToByteString(payReqFromInvoice.PaymentHash),
-                    ValueMsat = payReqFromInvoice.NumMsat,
+                    ValueMsat = valueMsat,
                     CltvExpiry = (uint)cltvExpiry,
                     Expiry = CalculateExpiry(payReqFromInvoice)
                 };
@@ -258,7 +266,8 @@ namespace LndGrpc
                 ValidateInvoices(payReqFromInvoice, hodlInvoice);
 
                 var invoiceResponse = invoiceClient.AddHoldInvoice(hodlInvoice);
-                _ = SubscribeToHodlInvoice(hodlInvoice.Hash, payReqFromInvoice, payRequestString);
+                _logger.LogInformation($"Created hodl invoice: {@invoiceResponse}");
+                _ = SubscribeToHodlInvoice(hodlInvoice.Hash, payReqFromInvoice, payRequestString, fee_budget_msat);
                 return invoiceResponse;
             }
             catch (Exception)
@@ -267,4 +276,3 @@ namespace LndGrpc
             }
         }
     }
-}

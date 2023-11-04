@@ -1,13 +1,12 @@
 using Invoicesrpc;
-using LndGrpc;
+using LnProxyApi.LndGrpc.Services;
+using LnProxyApi.Errors;
 using LnProxyApi.Models;
-using Lnrpc;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LnProxyApi.Controllers;
 
 [ApiController]
-[Route("[controller]")]
 public class LnProxyController : ControllerBase
 {
     private readonly IConfiguration _configuration;
@@ -20,6 +19,9 @@ public class LnProxyController : ControllerBase
     }
 
     [HttpPost("spec")]
+    [ProducesResponseType(typeof(LnProxyResponse),StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProxyError), StatusCodes.Status500InternalServerError)]
     public IActionResult Post([FromBody] LnProxyModel request)
     {
         try
@@ -39,7 +41,7 @@ public class LnProxyController : ControllerBase
                 request.RoutingMsat
             );
 
-            return Ok(new { ProxyInvoice = response.PaymentRequest });
+            return Ok(new LnProxyResponse{ ProxyInvoice = response.PaymentRequest });
         }
         catch (Exception ex)
         {
@@ -47,11 +49,11 @@ public class LnProxyController : ControllerBase
 
             if (ex.Message.Contains("StatusCode=", StringComparison.InvariantCultureIgnoreCase))
             {
+                //we're capturing the error emitted from lncli, which is a bit of a hack
                 var detail = ex.Message.Split("Detail=")[1];
-                return StatusCode(500, new { Status = "ERROR", Reason = detail.Replace("\\", "").Replace(")", "").Replace("\"", "").Trim() });
+                return StatusCode(500, new ProxyError("ERROR", detail.Replace("\\", "").Replace(")", "").Replace("\"", "").Trim()));
             }
-            return StatusCode(500, new { Status = "ERROR", Reason = ex.Message });
+            return StatusCode(500, new ProxyError("ERROR", ex.Message));
         }
     }
-
 }
