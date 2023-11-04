@@ -9,3 +9,8 @@ public class LnProxyModel
     public string? DescriptionHash { get; set; }
     public string? RoutingMsat { get; set; }
 }
+
+public class LnProxyResponse
+{
+    public required string ProxyInvoice { get; set; }
+}
