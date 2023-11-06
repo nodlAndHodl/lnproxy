@@ -9,16 +9,16 @@ namespace LnProxyApi.LndGrpc.Services;
 
 public class LightningService
     {
-        const long RoutingFeeBaseMsat = 1000; 
-        const long RoutingFeePPM = 1000;
-	    const long MinFeeBudgetMsat = 1000;
-        const long ExpiryBuffer = 300;
-        const long CltvDeltaAlpha = 42;
-        const long CltvDeltaBeta = 42;
-		const long MaxCltvExpiry = 1800;
-		const long MinCltvExpiry =  200;
-        const long RoutingBudgetAlpha = 1000;
-        const long RoutingBudgetBeta = 1_500_000;
+        public long RoutingFeeBaseMsat { get {return 1000;} } 
+        public long RoutingFeePPM { get { return 1000; } }
+        public long MinFeeBudgetMsat { get { return 1000; } }
+        public long ExpiryBuffer { get { return 300; } }
+        public long CltvDeltaAlpha { get { return 42; } }
+        public long CltvDeltaBeta { get { return 42; } }
+        public long MaxCltvExpiry { get { return 1800; } }
+        public long MinCltvExpiry { get { return 200; } }
+        public long RoutingBudgetAlpha { get { return 1000; } }
+        public long RoutingBudgetBeta { get { return 1_500_000; } }
 
         private readonly Dictionary<Invoice.Types.InvoiceState, string> invoiceState = 
 			new Dictionary<Invoice.Types.InvoiceState, string>
@@ -66,7 +66,7 @@ public class LightningService
             {
                 PaymentRequest = request,
                 FeeLimitMsat = feeLimitMsat,
-                CltvLimit = (int)CalcCltvExpiry(estimateFee),
+                CltvLimit = (int)CalculateCltvExpiry(estimateFee),
                 TimeoutSeconds = 600
             };
 
@@ -142,17 +142,23 @@ public class LightningService
             }
         }
 
-        private long CalculateExpiry(PayReq payReqFromInvoice)
+        //TODO Test
+        public long CalculateExpiry(PayReq payReqFromInvoice)
         {
-            long expiry = payReqFromInvoice.Expiry;
-
-            if (expiry > ExpiryBuffer)
+            if (payReqFromInvoice.Timestamp + payReqFromInvoice.Expiry < DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ExpiryBuffer)
             {
-                expiry = ExpiryBuffer;
+                throw new Exception("payment request expiration is too close.");
             }
 
-            long currentUnixTime = (long)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            long adjustedExpiry = (long)(payReqFromInvoice.Timestamp + expiry - currentUnixTime - ExpiryBuffer);
+            long expiry = payReqFromInvoice.Expiry;
+
+            if (expiry > MaxCltvExpiry)
+            {
+                expiry = MaxCltvExpiry;
+            }
+
+            long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long adjustedExpiry = payReqFromInvoice.Timestamp + expiry - currentUnixTime - ExpiryBuffer;
 
             return adjustedExpiry;
         }
@@ -183,7 +189,7 @@ public class LightningService
             }
         }
 
-        private int CalcCltvExpiry(RouteFeeResponse estimateFee){
+        public long CalculateCltvExpiry(RouteFeeResponse estimateFee){
             var cltvExpiry = estimateFee.TimeLockDelay + CltvDeltaAlpha + CltvDeltaBeta;
             _logger.LogInformation($"CLTV expiry from estimate of routing fees: {cltvExpiry}");
             if(cltvExpiry > MaxCltvExpiry){
@@ -194,11 +200,12 @@ public class LightningService
             if(cltvExpiry < MinCltvExpiry){
                 cltvExpiry = MinCltvExpiry;
             }
-            return (int)cltvExpiry;
+            return cltvExpiry;
         }
 
-        private void ValidateInvoices(PayReq payReqFromInvoice, AddHoldInvoiceRequest hodlInvoice)
+        public void ValidateInvoice(PayReq payReqFromInvoice, AddHoldInvoiceRequest hodlInvoice)
         {
+            //TODO move expiry
             if (payReqFromInvoice.Timestamp + payReqFromInvoice.Expiry < DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ExpiryBuffer)
             {
                 throw new Exception("payment request expiration is too close.");
@@ -216,40 +223,39 @@ public class LightningService
                 throw new Exception("Invoice must have a value");
             }
         }
+
+        public long CalculateValueMsat(PayReq payReqFromInvoice, long fee_budget_msat, long routing_fee_msat, string? payReqRoutingMsat){
+            var valueMsat = payReqFromInvoice.NumMsat + fee_budget_msat + routing_fee_msat;
+            if(valueMsat < payReqFromInvoice.NumMsat){
+                _logger.LogError($"Value too low from estimate of routing fees: {valueMsat}");
+                throw new Exception("Value too low from estimate of routing fees");
+            }
+            if(!string.IsNullOrWhiteSpace(payReqRoutingMsat)){
+                int.TryParse(payReqRoutingMsat, out int payReqRoutingMsatInt);
+                if (payReqRoutingMsatInt < (MinFeeBudgetMsat + routing_fee_msat)){
+                    _logger.LogWarning($"Routing fee budget too low {payReqRoutingMsatInt}");
+                    throw new Exception("Routing fee budget too low");
+                }
+                valueMsat = payReqFromInvoice.NumMsat - routing_fee_msat + payReqRoutingMsatInt;    
+            }
+
+            return valueMsat;
+        }
+
+
         public AddHoldInvoiceResp CreateHodlInvoice(string payRequestString, string? payReqDescription, string? payReqHash, string? payReqRoutingMsat)
         {
             try
             {
                 var payReqFromInvoice = DecodePayRequest(payRequestString);
         
-                var valueMsat = payReqFromInvoice.NumMsat;
-                var routing_fee_msat = RoutingFeeBaseMsat + payReqFromInvoice.NumMsat * RoutingFeePPM / 1_000_000;
-                var min_fee_budget_msat = EstimateRouteFee(payReqFromInvoice).Result;
-                var cltvExpiry = CalcCltvExpiry(min_fee_budget_msat);
-                var fee_budget_msat = min_fee_budget_msat.RoutingFeeMsat + RoutingBudgetAlpha + (min_fee_budget_msat.RoutingFeeMsat * RoutingBudgetBeta / 1_000_000);
+                var routingFeeMsat = RoutingFeeBaseMsat + payReqFromInvoice.NumMsat * RoutingFeePPM / 1_000_000;
+                var minFeeBudgetMsat = EstimateRouteFee(payReqFromInvoice).Result;
+                var cltvExpiry = CalculateCltvExpiry(minFeeBudgetMsat);
+                var feeBudgetMsat = minFeeBudgetMsat.RoutingFeeMsat + RoutingBudgetAlpha + (minFeeBudgetMsat.RoutingFeeMsat * RoutingBudgetBeta / 1_000_000);
                 
-                if(string.IsNullOrWhiteSpace(payReqRoutingMsat)){
-                    valueMsat = payReqFromInvoice.NumMsat + fee_budget_msat + routing_fee_msat;
-                }
+                var valueMsat = CalculateValueMsat(payReqFromInvoice, feeBudgetMsat, routingFeeMsat, payReqRoutingMsat);
 
-                if(!string.IsNullOrWhiteSpace(payReqRoutingMsat)){
-                    int.TryParse(payReqRoutingMsat, out int payReqRoutingMsatInt);
-                    try{
-                        _=checked(payReqRoutingMsatInt);
-                    }
-                    catch(OverflowException ex){
-                        _logger.LogError(ex, "Overflow error on routing fee budget");
-                        throw new Exception("Overflow error on routing fee budget");
-                    }
-                    if (payReqRoutingMsatInt < (MinFeeBudgetMsat + routing_fee_msat)){
-                        _logger.LogWarning($"Routing fee budget too low ${payReqRoutingMsatInt}");
-                        _logger.LogWarning($"Routing fee budget too low: ${payRequestString}");
-                        throw new Exception("Routing fee budget too low");
-                    }
-                    valueMsat = payReqFromInvoice.NumMsat - routing_fee_msat + payReqRoutingMsatInt;    
-                }
-
-                var invoiceClient = lnGrpcService.GetInvoiceClient();
                 var hodlInvoice = new AddHoldInvoiceRequest()
                 {
                     Memo = !string.IsNullOrWhiteSpace(payReqDescription) ?
@@ -263,11 +269,11 @@ public class LightningService
                     Expiry = CalculateExpiry(payReqFromInvoice)
                 };
 
-                ValidateInvoices(payReqFromInvoice, hodlInvoice);
+                ValidateInvoice(payReqFromInvoice, hodlInvoice);
 
-                var invoiceResponse = invoiceClient.AddHoldInvoice(hodlInvoice);
+                var invoiceResponse = lnGrpcService.GetInvoiceClient().AddHoldInvoice(hodlInvoice);
                 _logger.LogInformation($"Created hodl invoice: {@invoiceResponse}");
-                _ = SubscribeToHodlInvoice(hodlInvoice.Hash, payReqFromInvoice, payRequestString, fee_budget_msat);
+                _ = SubscribeToHodlInvoice(hodlInvoice.Hash, payReqFromInvoice, payRequestString, feeBudgetMsat);
                 return invoiceResponse;
             }
             catch (Exception)
