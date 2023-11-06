@@ -1,8 +1,9 @@
-using Microsoft.Extensions.Logging;
 using LnProxyApi.Helpers;
+
+
 namespace LnProxyApi.App.Tests;
 
-public class LnProxyServicesTests
+public class LnProxyTests
 {
     [SetUp]
     public void Setup()
