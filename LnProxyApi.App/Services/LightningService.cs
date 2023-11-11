@@ -9,16 +9,17 @@ namespace LnProxyApi.LndGrpc.Services;
 
 public class LightningService
     {
-        public long RoutingFeeBaseMsat { get {return 1000;} } 
-        public long RoutingFeePPM { get { return 1000; } }
-        public long MinFeeBudgetMsat { get { return 1000; } }
-        public long ExpiryBuffer { get { return 300; } }
-        public long CltvDeltaAlpha { get { return 42; } }
-        public long CltvDeltaBeta { get { return 42; } }
-        public long MaxCltvExpiry { get { return 1800; } }
-        public long MinCltvExpiry { get { return 200; } }
-        public long RoutingBudgetAlpha { get { return 1000; } }
-        public long RoutingBudgetBeta { get { return 1_500_000; } }
+        public long RoutingFeeBaseMsat { get {return 1000;} } // 1 sat
+        public long RoutingFeePPM { get { return 1000; } }// 1 sat
+        public long MinFeeBudgetMsat { get { return 1000; } }// 1 sat
+        public long ExpiryBuffer { get { return 300; } }// 5 minutes
+        public long CltvDeltaAlpha { get { return 42; } }//42 blocks
+        public long CltvDeltaBeta { get { return 42; } }// 42 blocks
+        public long MaxCltvExpiry { get { return 1800; } }// 30 minutes
+        public long MinCltvExpiry { get { return 200; } }// 3 minutes
+        public long RoutingBudgetAlpha { get { return 1000; } }// 1 sat
+        public long RoutingBudgetBeta { get { return 1_500_000; } }// 1.5 sat
+        public long MaxExpiry { get { return 604800; } } // 7 days
 
         private readonly Dictionary<Invoice.Types.InvoiceState, string> invoiceState = 
 			new Dictionary<Invoice.Types.InvoiceState, string>
@@ -142,7 +143,6 @@ public class LightningService
             }
         }
 
-        //TODO Test
         public long CalculateExpiry(PayReq payReqFromInvoice)
         {
             if (payReqFromInvoice.Timestamp + payReqFromInvoice.Expiry < DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ExpiryBuffer)
@@ -152,9 +152,9 @@ public class LightningService
 
             long expiry = payReqFromInvoice.Expiry;
 
-            if (expiry > MaxCltvExpiry)
+            if (expiry > MaxExpiry)
             {
-                expiry = MaxCltvExpiry;
+                expiry = MaxExpiry;
             }
 
             long currentUnixTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -224,19 +224,19 @@ public class LightningService
             }
         }
 
-        public long CalculateValueMsat(PayReq payReqFromInvoice, long fee_budget_msat, long routing_fee_msat, string? payReqRoutingMsat){
-            var valueMsat = payReqFromInvoice.NumMsat + fee_budget_msat + routing_fee_msat;
+        public long CalculateValueMsat(PayReq payReqFromInvoice, long feeBudgetMsat, long routingFeeMsat, string? payReqRoutingMsat){
+            var valueMsat = payReqFromInvoice.NumMsat + feeBudgetMsat + routingFeeMsat;
             if(valueMsat < payReqFromInvoice.NumMsat){
                 _logger.LogError($"Value too low from estimate of routing fees: {valueMsat}");
                 throw new Exception("Value too low from estimate of routing fees");
             }
             if(!string.IsNullOrWhiteSpace(payReqRoutingMsat)){
                 int.TryParse(payReqRoutingMsat, out int payReqRoutingMsatInt);
-                if (payReqRoutingMsatInt < (MinFeeBudgetMsat + routing_fee_msat)){
+                if (payReqRoutingMsatInt < (MinFeeBudgetMsat + routingFeeMsat)){
                     _logger.LogWarning($"Routing fee budget too low {payReqRoutingMsatInt}");
                     throw new Exception("Routing fee budget too low");
                 }
-                valueMsat = payReqFromInvoice.NumMsat - routing_fee_msat + payReqRoutingMsatInt;    
+                valueMsat = payReqFromInvoice.NumMsat - routingFeeMsat + payReqRoutingMsatInt;    
             }
 
             return valueMsat;
