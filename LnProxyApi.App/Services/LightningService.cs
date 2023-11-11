@@ -205,6 +205,7 @@ public class LightningService
 
         public void ValidateInvoice(PayReq payReqFromInvoice, AddHoldInvoiceRequest hodlInvoice)
         {
+            //TODO move expiry
             if (payReqFromInvoice.Timestamp + payReqFromInvoice.Expiry < DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ExpiryBuffer)
             {
                 throw new Exception("payment request expiration is too close.");
