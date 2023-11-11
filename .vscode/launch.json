@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Use IntelliSense to find out which attributes exist for C# debugging
+            // Use hover for the description of the existing attributes
+            // For further information visit https://github.com/dotnet/vscode-csharp/blob/main/debugger-launchjson.md
+            "name": "Test",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "test",
+            // If you have changed target frameworks, make sure to update the program path.
+            "program": "${workspaceFolder}/LnProxyApi.App.Tests/bin/Debug/net7.0/LnProxyApi.App.Tests.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/LnProxyApi.App.Tests",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": ".NET Core Launch (web)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/LnProxyApi.App/bin/Debug/net7.0/LnProxyApi.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "requireExactSource": false,
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "Development"
+            },
+            "sourceFileMap": {
+                "/Views": "${workspaceFolder}/Views"
+            }
+        },
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach"
+        },
+    ]
+}
