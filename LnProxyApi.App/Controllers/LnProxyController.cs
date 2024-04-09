@@ -9,12 +9,12 @@ namespace LnProxyApi.Controllers;
 [ApiController]
 public class LnProxyController : ControllerBase
 {
-    private readonly IConfiguration _configuration;
     private readonly ILogger<LnProxyController> _logger;
+    private readonly LightningService _lightningService;
 
-    public LnProxyController(IConfiguration configuration, ILogger<LnProxyController> logger)
+    public LnProxyController(ILogger<LnProxyController> logger, LightningService lightningService)
     {
-        _configuration = configuration;
+        _lightningService = lightningService;
         _logger = logger;
     }
 
@@ -31,10 +31,10 @@ public class LnProxyController : ControllerBase
                 return BadRequest(ModelState);
             }
 
-            var lightningService = new LightningService(_configuration, _logger);
+
             _logger.LogInformation($"Creating proxy request invoice {request.Invoice}: {@request}");
 
-            AddHoldInvoiceResp response = lightningService.CreateHodlInvoice(
+            AddHoldInvoiceResp response = _lightningService.CreateHodlInvoice(
                 request.Invoice,
                 request.Description,
                 request.DescriptionHash,
