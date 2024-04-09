@@ -29,13 +29,13 @@ public class LightningService
             { Invoice.Types.InvoiceState.Open, "OPEN" }
         };
 
-        private LnGrpcClientService lnGrpcService;
-        private readonly ILogger _logger;
+        private LnGrpcClientService _lnGrpcService;
+        private readonly ILogger <LightningService> _logger;
 
-        public LightningService(IConfiguration configuration, ILogger logger)
+        public LightningService(IConfiguration configuration,ILogger <LightningService> logger)
         {
             _logger = logger;
-            lnGrpcService = new LnGrpcClientService(configuration);
+            _lnGrpcService = new LnGrpcClientService(configuration);
         }
 
 
@@ -43,7 +43,7 @@ public class LightningService
         {
             try
             {
-                var client = lnGrpcService.GetLightningClient();
+                var client = _lnGrpcService.GetLightningClient();
                 var payReq = new PayReqString
                 {
                     PayReq = invoice,
@@ -61,7 +61,7 @@ public class LightningService
 
         private async Task SettleAndPayInvoice(PayReq originalInvoice, string request, long feeLimitMsat)
         {
-            var routerClient = lnGrpcService.GetRouterClient();
+            var routerClient = _lnGrpcService.GetRouterClient();
             var estimateFee = EstimateRouteFee(originalInvoice).Result;
             var req = new SendPaymentRequest()
             {
@@ -76,7 +76,7 @@ public class LightningService
             await foreach (var payment in call.ResponseStream.ReadAllAsync())
             {
                 try
-                {	var invoiceClient = lnGrpcService.GetInvoiceClient();
+                {	var invoiceClient = _lnGrpcService.GetInvoiceClient();
                     if (payment.Status == Payment.Types.PaymentStatus.Failed)
                     {  
 						var cancel = new CancelInvoiceMsg()
@@ -118,7 +118,7 @@ public class LightningService
 
         public async Task SubscribeToHodlInvoice(ByteString rHash, PayReq originalInvoice, string originalRequest, long feeLimitMsat)
         {
-            var invoiceClient = lnGrpcService.GetInvoiceClient();
+            var invoiceClient = _lnGrpcService.GetInvoiceClient();
 
             var sub = new SubscribeSingleInvoiceRequest() { RHash = rHash };
             var call = invoiceClient.SubscribeSingleInvoice(sub);
@@ -168,7 +168,7 @@ public class LightningService
         {
             try
             {
-                var client = lnGrpcService.GetRouterClient();
+                var client = _lnGrpcService.GetRouterClient();
                 var route = new RouteFeeRequest()
                 {   
                     AmtSat = payReqFromInvoice.NumSatoshis,
@@ -271,7 +271,7 @@ public class LightningService
 
                 ValidateInvoice(payReqFromInvoice, hodlInvoice);
 
-                var invoiceResponse = lnGrpcService.GetInvoiceClient().AddHoldInvoice(hodlInvoice);
+                var invoiceResponse = _lnGrpcService.GetInvoiceClient().AddHoldInvoice(hodlInvoice);
                 _logger.LogInformation($"Created hodl invoice: {@invoiceResponse}");
                 _ = SubscribeToHodlInvoice(hodlInvoice.Hash, payReqFromInvoice, payRequestString, feeBudgetMsat);
                 return invoiceResponse;
