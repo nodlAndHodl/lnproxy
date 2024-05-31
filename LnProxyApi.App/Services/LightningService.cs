@@ -32,10 +32,10 @@ public class LightningService
         private LnGrpcClientService _lnGrpcService;
         private readonly ILogger <LightningService> _logger;
 
-        public LightningService(IConfiguration configuration,ILogger <LightningService> logger)
+        public LightningService(ILogger <LightningService> logger, LnGrpcClientService lnGrpcService)
         {
             _logger = logger;
-            _lnGrpcService = new LnGrpcClientService(configuration);
+            _lnGrpcService = lnGrpcService;
         }
 
 

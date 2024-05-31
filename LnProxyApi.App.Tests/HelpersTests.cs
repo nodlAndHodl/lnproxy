@@ -5,11 +5,6 @@ namespace LnProxyApi.App.Tests;
 
 public class LnProxyTests
 {
-    [SetUp]
-    public void Setup()
-    {
-    
-    }
 
     [Test]
     public void HexStringHelperTest()

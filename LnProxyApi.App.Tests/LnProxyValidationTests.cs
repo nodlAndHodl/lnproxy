@@ -14,8 +14,9 @@ public class InvoiceValidationTests
         public void Setup()
         {
             var configuration = new Mock<IConfiguration>().Object;
+            var lndGrpcClientService = new Mock<LnGrpcClientService>(configuration).Object;
             var logger = new Mock<ILogger<LightningService>>().Object;
-            lightningService = new LightningService(configuration, logger);
+            lightningService = new LightningService(logger, lndGrpcClientService);
         }
 
         [Test]
