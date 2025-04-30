@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  lnproxyapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - APPSETTINGS__PATHTOMACAROON=/app/certs/admin.macaroon
+      - APPSETTINGS__PATHTOSSLCERTIFICATE=/app/certs/tls.cert
+      - APPSETTINGS__GRPCHOST=lnd:10009
+      - Logging__LogLevel__Default=Information
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+    volumes:
+      - ./lnd-certs:/app/certs
+    # Uncomment if you need to connect to an external LND instance
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    # networks:
+    #   - lnproxy-network
+
+# Uncomment if you need to connect to an external network
+# networks:
+#   lnproxy-network:
+#     external: true

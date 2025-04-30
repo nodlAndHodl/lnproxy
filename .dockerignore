@@ -1,0 +1,35 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Development settings
+**/appsettings.Development.json
+
+# VS Code files
+**/.vscode/
+
+# Test results
+**/TestResults/
+
+# User-specific files
+**/*.user
+**/*.suo
+
+# Logs
+**/logs/
+
+# Temporary files
+**/tmp/
+**/temp/
+
+# Docker files
+.docker/
+
+# IDE files
+.idea/
+.vs/
